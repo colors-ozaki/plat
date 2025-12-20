@@ -139,12 +139,13 @@ async def main():
         font_jp = pygame.font.Font(None, 36)
         font_ui = pygame.font.Font(None, 24)
 
-    # --- 内部変数の初期化 ---
+    # --- 変数の初期化 ---
     CURRENT_STAGE = 1 
     GAME_STATE = 'TITLE_SCREEN'
     clear_timer = 0
     inventory = ["回復薬"]
     selected_item_index = 0
+    selected_quit_choice = 0 # 0: いいえ, 1: はい
     display_message = ""
     message_timer = 0
     message_color = BLACK
@@ -179,45 +180,83 @@ async def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_i and GAME_STATE in ['RUNNING', 'MENU']:
-                    GAME_STATE = 'MENU' if GAME_STATE == 'RUNNING' else 'RUNNING'
+                # 共通：クリア画面やゲームオーバー画面でEnterを押すとタイトルへ
+                if GAME_STATE in ['ALL_CLEAR', 'GAME_OVER']:
+                    if event.key in [pygame.K_RETURN, pygame.K_SPACE]:
+                        GAME_STATE = 'TITLE_SCREEN'
+
+                # ESCキー: 終了確認メニュー
+                if event.key == pygame.K_ESCAPE:
+                    if GAME_STATE == 'RUNNING':
+                        GAME_STATE = 'QUIT_CONFIRM'
+                        selected_quit_choice = 0
+                    elif GAME_STATE == 'QUIT_CONFIRM':
+                        GAME_STATE = 'RUNNING'
+
+                # Iキー: アイテム欄
+                if event.key == pygame.K_i:
+                    if GAME_STATE == 'RUNNING':
+                        GAME_STATE = 'ITEM_MENU'
+                        selected_item_index = 0
+                    elif GAME_STATE == 'ITEM_MENU':
+                        GAME_STATE = 'RUNNING'
+
+                if GAME_STATE == 'TITLE_SCREEN':
+                    if event.key in [pygame.K_SPACE, pygame.K_RETURN]:
+                        reset_game(1)
                 
-                if GAME_STATE == 'TITLE_SCREEN' and event.key in [pygame.K_SPACE, pygame.K_RETURN]:
-                    reset_game(1)
                 elif GAME_STATE == 'RUNNING':
                     if event.key == pygame.K_LEFT: player.moving_left = True
                     if event.key == pygame.K_RIGHT: player.moving_right = True
                     if event.key in [pygame.K_SPACE, pygame.K_UP]: player.jump()
-                elif GAME_STATE == 'MENU':
-                    if event.key == pygame.K_UP:
-                        selected_item_index = (selected_item_index - 1) % len(inventory) if inventory else 0
-                    if event.key == pygame.K_DOWN:
-                        selected_item_index = (selected_item_index + 1) % len(inventory) if inventory else 0
-                    if event.key == pygame.K_RETURN and inventory:
-                        item = inventory[selected_item_index]
-                        if item == "回復薬":
-                            inventory.pop(selected_item_index)
-                            player.health = min(player.health + 1, player.max_health)
-                            display_message = "ライフ回復！"; message_color = BLUE; message_timer = 60
-                            GAME_STATE = 'RUNNING'
-                        elif item == "ステージの鍵":
-                            door_opened = False
-                            for y, row in enumerate(game_map):
-                                for x, tile in enumerate(row):
-                                    if tile == 'D':
-                                        dist = ((player.rect.centerx - x*TILE_SIZE)**2 + (player.rect.centery - y*TILE_SIZE)**2)**0.5
-                                        if dist < TILE_SIZE * 2.5:
-                                            game_map[y][x] = 'G' # ゴールに変化
-                                            door_opened = True
-                            if door_opened:
+                
+                elif GAME_STATE == 'ITEM_MENU':
+                    if inventory:
+                        if event.key == pygame.K_UP:
+                            selected_item_index = (selected_item_index - 1) % len(inventory)
+                        if event.key == pygame.K_DOWN:
+                            selected_item_index = (selected_item_index + 1) % len(inventory)
+                        if event.key == pygame.K_RETURN:
+                            item = inventory[selected_item_index]
+                            if item == "回復薬":
                                 inventory.pop(selected_item_index)
-                                display_message = "扉が開いた！ゴールへ急げ！"; message_color = GREEN; message_timer = 90
+                                player.health = min(player.health + 1, player.max_health)
+                                display_message = "ライフ回復！"; message_color = BLUE; message_timer = 60
                                 GAME_STATE = 'RUNNING'
-                                selected_item_index = 0
-                            else:
-                                display_message = "扉が遠すぎる..."; message_color = RED; message_timer = 60
-                                GAME_STATE = 'RUNNING'
+                            elif item == "ステージの鍵":
+                                door_opened = False
+                                for y, row in enumerate(game_map):
+                                    for x, tile in enumerate(row):
+                                        if tile == 'D':
+                                            dist = ((player.rect.centerx - x*TILE_SIZE)**2 + (player.rect.centery - y*TILE_SIZE)**2)**0.5
+                                            if dist < TILE_SIZE * 2.5:
+                                                game_map[y][x] = 'G'
+                                                door_opened = True
+                                if door_opened:
+                                    inventory.pop(selected_item_index)
+                                    display_message = "扉が開いた！"; message_color = GREEN; message_timer = 90
+                                    GAME_STATE = 'RUNNING'
+                                else:
+                                    display_message = "扉が遠すぎる..."; message_color = RED; message_timer = 60
+                                    GAME_STATE = 'RUNNING'
+                
+                elif GAME_STATE == 'QUIT_CONFIRM':
+                    # Yキーで戻る
+                    if event.key == pygame.K_y:
+                        GAME_STATE = 'TITLE_SCREEN'
+                    # Nキーで戻らない
+                    elif event.key == pygame.K_n:
+                        GAME_STATE = 'RUNNING'
+                    # 矢印キー操作
+                    elif event.key == pygame.K_LEFT: selected_quit_choice = 1
+                    elif event.key == pygame.K_RIGHT: selected_quit_choice = 0
+                    elif event.key == pygame.K_RETURN:
+                        if selected_quit_choice == 1:
+                            GAME_STATE = 'TITLE_SCREEN'
+                        else:
+                            GAME_STATE = 'RUNNING'
 
             if event.type == pygame.KEYUP:
                 if player:
@@ -264,6 +303,7 @@ async def main():
             t = font_jp.render("Key Quest - Space to Start", True, BLACK)
             screen.blit(t, t.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2)))
         else:
+            # マップ描画
             for y, row in enumerate(game_map):
                 for x, tile in enumerate(row):
                     r = pygame.Rect(x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE, TILE_SIZE).move(-camera_scroll[0], -camera_scroll[1])
@@ -275,6 +315,7 @@ async def main():
             if player: player.draw(screen, camera_scroll)
             for enemy in enemies: enemy.draw(screen, camera_scroll)
             
+            # UI
             status_text = f"STAGE {CURRENT_STAGE} | LIFE: {player.health if player else 0}"
             screen.blit(font_ui.render(status_text, True, BLACK), (20, 20))
             
@@ -283,30 +324,56 @@ async def main():
                 screen.blit(m, m.get_rect(center=(SCREEN_WIDTH//2, 200)))
                 message_timer -= 1
             
-            if GAME_STATE == 'MENU':
+            # Iキー：アイテムメニュー
+            if GAME_STATE == 'ITEM_MENU':
                 overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
                 overlay.fill((0, 0, 0, 180))
                 screen.blit(overlay, (0, 0))
-                title_m = font_jp.render("--- ITEM MENU ---", True, WHITE)
-                screen.blit(title_m, (300, 140))
+                screen.blit(font_jp.render("--- ITEM ---", True, WHITE), (320, 150))
+                if not inventory:
+                    screen.blit(font_jp.render("アイテムがありません", True, WHITE), (250, 250))
                 for i, item in enumerate(inventory):
                     c = YELLOW if i == selected_item_index else WHITE
-                    txt = f"{'>' if i==selected_item_index else '  '} {item}"
-                    screen.blit(font_jp.render(txt, True, c), (300, 200 + i*50))
-            
+                    txt = f"{'>' if i == selected_item_index else '  '} {item}"
+                    screen.blit(font_jp.render(txt, True, c), (300, 220 + i * 50))
+
+            # ESCキー：タイトルへ戻る確認
+            if GAME_STATE == 'QUIT_CONFIRM':
+                overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 200))
+                screen.blit(overlay, (0, 0))
+                screen.blit(font_jp.render("タイトルに戻りますか？", True, WHITE), (230, 250))
+                yes_c = YELLOW if selected_quit_choice == 1 else WHITE
+                no_c = YELLOW if selected_quit_choice == 0 else WHITE
+                screen.blit(font_jp.render("はい(Y)", True, yes_c), (300, 320))
+                screen.blit(font_jp.render("いいえ(N)", True, no_c), (420, 320))
+
             if GAME_STATE == 'GAME_OVER':
+                overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 150))
+                screen.blit(overlay, (0, 0))
                 go = font_jp.render("GAME OVER", True, RED)
-                screen.blit(go, go.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2)))
+                screen.blit(go, go.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 20)))
+                sub = font_ui.render("Press Enter to Title", True, WHITE)
+                screen.blit(sub, sub.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 40)))
             
             if GAME_STATE == 'ALL_CLEAR':
-                ac = font_jp.render("ALL STAGES CLEAR!", True, GREEN)
-                screen.blit(ac, ac.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2)))
+                overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 150))
+                screen.blit(overlay, (0, 0))
+                ac = font_jp.render("ALL STAGES CLEAR!", True, YELLOW)
+                screen.blit(ac, ac.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 20)))
+                sub = font_ui.render("Press Enter to Title", True, WHITE)
+                screen.blit(sub, sub.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 40)))
 
         pygame.display.flip()
         clock.tick(FPS)
-        await asyncio.sleep(0) # 非同期処理のための休憩
+        await asyncio.sleep(0)
 
     pygame.quit()
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
